@@ -21,21 +21,17 @@
 #ifndef Integrator_h
 #define Integrator_h
 
-#include <vtkm/Types.h>
 
-
-template <typename FieldEvaluateType, typename FieldType, vtkm::IdComponent Size>
+template <typename FieldEvaluateType, typename FieldType>
 class RK4Integrator
 {
 public:
-  VTKM_EXEC_CONT
   RK4Integrator()
     : h(0)
     , h_2(0)
   {
   }
 
-  VTKM_EXEC_CONT
   RK4Integrator(const FieldEvaluateType& _eval, FieldType _h)
     : eval(_eval)
     , h(_h)
@@ -43,19 +39,22 @@ public:
   {
   }
 
+  
   template <typename VelFieldType>
-  VTKM_EXEC bool Step(const vtkm::Vec<FieldType, Size>& pos,
-                      const VelFieldType& pf,
-                      vtkm::Vec<FieldType, Size>& out) const
+  __host__ __device__
+  bool Step(const float2& pos,
+                      const VelFieldType* pf,
+                      float2& out) const
   {
-		vtkm::Vec<FieldType, Size> k1(0,0), k2(0,0), k3(0,0), k4(0,0);
+	  float2 k1, k2, k3, k4;
+	  k1 = k2 = k3 = k4 = make_float2(0, 0);
 
 #if 1
     if (!eval.Evaluate(pos, pf, k1)) {
       out = pos;
       return false;
 		}
-		vtkm::Normalize(k1);
+		normalize(k1);
 
 		k1 = k1 * h * 0.5;
 		k1 = k1 + pos;
@@ -64,7 +63,7 @@ public:
 			out = pos;
 			return false;
 		}
-		vtkm::Normalize(k2);
+		normalize(k2);
 		k1 = k1 - pos;
 
 		//v = (getVector(k1));
@@ -88,7 +87,7 @@ public:
 			return false;
 		}
 		
-		vtkm::Normalize(k3);
+		normalize(k3);
 		k2 = k2 - pos;
 
 		//k3 = new Particle(v);
@@ -105,7 +104,7 @@ public:
 			return false;
 		}
 
-		vtkm::Normalize(k4);
+		normalize(k4);
 		k3 = k3 - pos;
 		////v.Print();
 
@@ -144,16 +143,16 @@ public:
   FieldType h, h_2;
 };
 
-template <typename FieldEvaluateType, typename FieldType, vtkm::IdComponent Size>
+template <typename FieldEvaluateType, typename FieldType>
 class EulerIntegrator
 {
 public:
-  VTKM_EXEC_CONT
+  
   EulerIntegrator()
     : h(0)
   {
   }
-  VTKM_EXEC_CONT
+  
   EulerIntegrator(const FieldEvaluateType& _eval, FieldType _h)
     : eval(_eval)
     , h(_h)
@@ -161,11 +160,11 @@ public:
   }
 
   template <typename PortalType>
-  VTKM_EXEC bool Step(const vtkm::Vec<FieldType, Size>& pos,
-                      const PortalType& field,
-                      vtkm::Vec<FieldType, Size>& out) const
+  bool Step(const float2& pos,
+                      const PortalType* field,
+                      float2& out) const
   {
-    vtkm::Vec<FieldType, Size> vCur;
+    float2 vCur;
 //    eval.incrT(h);
     if (eval.Evaluate(pos, field, vCur))
     {

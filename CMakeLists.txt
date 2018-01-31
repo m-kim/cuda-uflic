@@ -20,64 +20,23 @@
 ##
 ##=============================================================================
 cmake_minimum_required(VERSION 3.3)
-project(vtkm-uflic)
+project(cuda-uflic LANGUAGES CXX CUDA)
 
-
-#Find the VTK-m package
-find_package(VTKm REQUIRED
-  OPTIONAL_COMPONENTS Serial TBB CUDA
-  )
-
+find_package(CUDA QUIET REQUIRED)
 
 set(UFLIC_SRC
-  main.cpp
+  main.cu
 )
 set(UFLIC_HDR
-  Bounds2.h
-  Convolve.h
-  Draw.h
-  Evaluator.h
-  Integrator.h
-  Jitter.h
-  Normalize.h
-  Reader.h
-  Sharpen.h
-  UFLIC.h
+	Evaluator.cuh
+	Integrator.cuh
+	Jitter.cuh
+	Sharpen.cuh
 )
-add_executable(UFLIC_rendering_Serial ${UFLIC_SRC} ${UFLIC_HDR})
 
-target_include_directories(UFLIC_rendering_Serial PRIVATE 	${VTKm_INCLUDE_DIRS})
-target_link_libraries(UFLIC_rendering_Serial ${VTKm_LIBRARIES})
-target_compile_options(UFLIC_rendering_Serial PRIVATE ${VTKm_COMPILE_OPTIONS})
-target_compile_definitions(UFLIC_rendering_Serial PRIVATE
-                       "VTKM_DEVICE_ADAPTER=VTKM_DEVICE_ADAPTER_SERIAL")
+include_directories("${CUDA_SDK_ROOT_DIR}/common/inc")
+add_executable(UFLIC_rendering ${UFLIC_SRC} ${UFLIC_HDR} )
 
-if(VTKm_CUDA_FOUND)
-  set(old_nvcc_flags ${CUDA_NVCC_FLAGS})
-  set(old_cxx_flags ${CMAKE_CXX_FLAGS})
-  vtkm_setup_nvcc_flags( old_nvcc_flags old_cxx_flags)
-  vtkm_disable_troublesome_thrust_warnings()
-
-  # Cuda compiles do not respect target_include_directories
-  cuda_include_directories(${VTKm_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR})
-
-  set (cudaSource  "${CMAKE_CURRENT_BINARY_DIR}/main.cu")
-  configure_file(main.cpp "${CMAKE_CURRENT_BINARY_DIR}/main.cu" COPYONLY)
-  cuda_add_executable(UFLIC_rendering_CUDA ${cudaSource})
-  target_include_directories(UFLIC_rendering_CUDA PRIVATE ${VTKm_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR})
-  target_link_libraries(UFLIC_rendering_CUDA PRIVATE ${VTKm_LIBRARIES})
-  target_compile_options(UFLIC_rendering_CUDA PRIVATE ${VTKm_COMPILE_OPTIONS})
-   set(CUDA_NVCC_FLAGS ${old_nvcc_flags})
-  set(CMAKE_CXX_FLAGS ${old_cxx_flags})
-endif()
-
-if(VTKm_TBB_FOUND)
-    add_executable(UFLIC_rendering_TBB ${UFLIC_SRC} ${UFLIC_HDR})
-    target_include_directories(UFLIC_rendering_TBB PRIVATE ${VTKm_INCLUDE_DIRS})
-    target_link_libraries(UFLIC_rendering_TBB PRIVATE ${VTKm_LIBRARIES})
-    target_compile_options(UFLIC_rendering_TBB PRIVATE ${VTKm_COMPILE_OPTIONS})
-    target_compile_definitions(UFLIC_rendering_TBB PRIVATE "VTKM_DEVICE_ADAPTER=VTKM_DEVICE_ADAPTER_TBB")
-
-endif()
+target_link_libraries(UFLIC_rendering )
 
 

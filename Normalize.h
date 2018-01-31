@@ -1,11 +1,6 @@
 #ifndef Normalize_H
 #define Normalize_H
 
-#include <vtkm/Types.h>
-#include <vtkm/Math.h>
-#include <vtkm/worklet/WorkletMapField.h>
-#include <vtkm/cont/Field.h>
-#include <vtkm/cont/ArrayHandle.h>
 
 
 

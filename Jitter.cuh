@@ -1,19 +1,14 @@
 #ifndef Jitter_H
 #define Jitter_H
 
-#include <vtkm/Types.h>
-#include <vtkm/Math.h>
-#include <vtkm/worklet/WorkletMapField.h>
-#include <vtkm/cont/Field.h>
-#include <vtkm/cont/ArrayHandle.h>
-
-class Jitter : public vtkm::worklet::WorkletMapField
+template<class T>
+class Jitter
 {
 public:
-	Jitter(vtkm::Id2 &_d,
-				vtkm::IdComponent bitsize,
-				vtkm::Float32 clampLow,
-				vtkm::Float32 clampHigh)
+	Jitter(uint2 &_d,
+				T bitsize,
+				T clampLow,
+				T clampHigh)
 		:dim(_d),
 		BitSize(bitsize),
 		clampingLowerBound(clampLow),
@@ -22,37 +17,24 @@ public:
 
 	}
 
-	typedef void ControlSignature(FieldIn<>,
-																WholeArrayInOut<>,
-																WholeArrayInOut<>,
-
-																FieldOut<>);
-
-
-	typedef void ExecutionSignature(_1, _2, _3, _4);
-
-
-	VTKM_EXEC
-		vtkm::Id getIdx(vtkm::Id x, vtkm::Id y) const
+	__device__ __host__
+		size_t getIdx(uint x, uint y) const
 	{
-		return vtkm::Max(vtkm::Min(y, dim[1] - 1), static_cast<vtkm::Id>(0)) * dim[0]
-			+ vtkm::Max(vtkm::Min(x, dim[0] - 1), static_cast<vtkm::Id>(0));
+		return max(min(y, dim.x - 1), static_cast<uint>(0)) * dim.x
+			+ max(min(x, dim.x - 1), static_cast<uint>(0));
 	}
 
-  template<typename WholeArrayInType, typename FieldOutType>
-  VTKM_EXEC
-	void operator()(const vtkm::Id &idx,
-		const WholeArrayInType &data,
-		const WholeArrayInType &tex,
-		FieldOutType &reval
-		) const
+	
+	__host__ __device__
+	T operator()(const thrust::tuple<uint, T,T> &idx_data_tex) const
 	{
-		vtkm::Id x, y;
-		y = idx / dim[0];
-		x = idx % dim[0];
-		reval = data[idx];
-		if (y >= 0 && y < dim[1] && x >= 0 && x < dim[0]) {
-			FieldOutType rnd = tex[idx];
+		uint x, y;
+		x = idx_data_tex.get<0>() / dim.x;
+		y = idx_data_tex.get<0>() % dim.x;
+
+		T reval = idx_data_tex.get<1>();
+		if (y >= 0 && y < dim.y && x >= 0 && x < dim.x) {
+			T rnd = idx_data_tex.get<2>();
 			if (rnd > BitSize / 2)
 				rnd -= BitSize / 2;
 
@@ -68,40 +50,12 @@ public:
 			//else
 			//	reval = (reval - clampingLowerBound) / (clampingUpperBound - clampingLowerBound);
 		}
+		return reval;
 	}
 
-	vtkm::Id2 dim;
-	vtkm::IdComponent clampingLowerBound, clampingUpperBound;
-	vtkm::IdComponent BitSize;
+	uint2 dim;
+	T clampingLowerBound, clampingUpperBound;
+	T BitSize;
 };
 
-template<typename FieldType, typename DeviceAdapter>
-class DoJitter
-{
-public:
-	DoJitter(vtkm::Id2 _d)
-		:dim(_d)
-	{
-
-	}
-
-	void Run(
-		vtkm::cont::ArrayHandle<FieldType> &in,
-		vtkm::cont::ArrayHandle<FieldType> &tex,
-		vtkm::cont::ArrayHandle<FieldType> &out) {
-		typedef typename vtkm::worklet::DispatcherMapField<Jitter>
-			JitterWorkletDispatchType;
-
-		Jitter JitterWorklet(dim, 256, 256 * 0.1, 256 * 0.9);
-		JitterWorkletDispatchType dispatch(JitterWorklet);
-		in.PrepareForInPlace(DeviceAdapter());
-		out.PrepareForInPlace(DeviceAdapter());
-
-		dispatch.Invoke(vtkm::cont::ArrayHandleIndex(dim[0] * dim[1]),
-			in, tex, out);
-
-	}
-
-	vtkm::Id2 dim;
-};
 #endif
