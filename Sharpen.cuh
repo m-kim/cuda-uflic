@@ -9,17 +9,17 @@ size_t getIdx(uint x, uint y,
 		+ max(min(x, dim.x - 1), static_cast<uint>(0));
 }
 
-template<class FieldOutType>
+template<class FieldType, class FieldOutType>
 __global__
 void sharpen(
-	const unsigned char *data,
+	const FieldType *data,
 	FieldOutType *reval
 	) 
 {
 	uint x, y;
 	x = blockIdx.x * blockDim.x + threadIdx.x;
 	y = blockIdx.y * blockDim.y + threadIdx.y;
-	uint2 dim = make_uint2(x, y);
+	uint2 dim = make_uint2(blockDim.x * gridDim.x, blockDim.y * gridDim.y);
 
 	FieldOutType left_up = data[getIdx(x - 1, y + 1, dim)];// * float(ttl);
 	FieldOutType up = data[getIdx(x, y + 1, dim)];// / float(ttl);
