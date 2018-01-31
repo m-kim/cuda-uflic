@@ -9,21 +9,22 @@ bool outside(const float2 &pos, const uint2 dim)
 return pos.x < 0 || pos.x >= dim.x || pos.y < 0 || pos.y >= dim.y || pos.x != pos.x || pos.y != pos.y;
 }
 
+template<class FieldType>
 __global__
 void drawline(
-				unsigned char *canvas,
-                  unsigned char *omega,
-                  const float2 * _p1,
+	FieldType *canvas,
+	FieldType *omega,
+             const float2 * _p1,
                   const float2 * _p2,
-                  const unsigned char *field) {
+				FieldType *field) {
 
-	uint tid = blockDim.x * blockIdx.x + threadIdx.x;
+	uint tid = (blockDim.x * blockIdx.x + threadIdx.x ) + blockDim.x*gridDim.x * (blockDim.y * blockIdx.y + threadIdx.y);
 	float2 p1 = _p1[tid];
 	float2 p2 = _p2[tid];
 
     if (!outside(p1, make_uint2(blockDim.x * gridDim.x, blockDim.y*gridDim.y)) && !outside(p2, make_uint2(blockDim.x * gridDim.x, blockDim.y*gridDim.y))){
 
-		unsigned char val = field[tid]; 
+		FieldType val = canvas[tid]; 
 			float2 p = p1;
 			float2 d = p2 - p;
 
@@ -37,7 +38,7 @@ void drawline(
 			for (int i = 0; i<N; i++) {
 				if (!outside(make_float2(round(p.x), roundf(p.y)), make_uint2(blockDim.x * gridDim.x, blockDim.y*gridDim.y))) {
 					size_t idx = static_cast<size_t>(roundf(p.y))*blockDim.x*gridDim.x + static_cast<size_t>(roundf(p.x));
-					canvas[idx] += val;//color(255,255,255);
+					field[idx] += val;//color(255,255,255);
 					omega[idx]++;
 				}
 				p += s;

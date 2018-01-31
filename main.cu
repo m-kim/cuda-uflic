@@ -67,9 +67,9 @@ void saveAs(std::string fileName,
 	thrust::host_vector<VecComponentType> canvas, 
 	size_t Width, size_t Height) {
 	std::ofstream of(fileName.c_str(), std::ios_base::binary | std::ios_base::out);
-	of << "P6" << std::endl << Width << " " << Height << std::endl << 255 << std::endl;
+	of << "P6\n" << Width << " " << Height << "\n" << 255 << "\n";
 	//ColorBufferType::PortalConstControl colorPortal = this->ColorBuffer.GetPortalConstControl();
-	for (size_t yIndex = Height - 1; yIndex >= 0; yIndex--)
+	for (size_t yIndex = (Height - 1); yIndex > 0; yIndex--)
 	{
 		for (size_t xIndex = 0; xIndex < Width; xIndex++)
 		{
@@ -89,7 +89,7 @@ int main(int argc, char **argv)
 {
 	const size_t ttl = 4, loop_cnt = 12;
 	typedef float VecType;
-	typedef unsigned char FieldType;
+	typedef uint FieldType;
 
   typedef float2 VecField;
 
@@ -103,8 +103,8 @@ int main(int argc, char **argv)
   //typedef VectorField<VecType,Size> EvalType;
 
 
-  int x = 512;
-  int y = 256;
+  int x = 256;
+  int y = 128;
   if (argc > 1){
     x = atoi(argv[1]);
     y = atoi(argv[2]);
@@ -121,9 +121,8 @@ int main(int argc, char **argv)
 
   auto t0 = std::chrono::high_resolution_clock::now();
 
-  uint2 dim = { 256,256 };
 
-  //vtkm::Id2 dim = reader->dim;
+  uint2 dim = reader->dim;
   float2 spacing = reader->spacing;
   //Bounds bounds = reader->bounds;
 
@@ -170,21 +169,14 @@ int main(int argc, char **argv)
 	d_omega = h_omega;
 	d_tex = h_tex;
 
-  //DrawLineWorkletType drawline(bounds, dim);
-	//DoSharpen<FieldType, DeviceAdapter> dosharp(dim);
-	//DoJitter<FieldType, DeviceAdapter> dojitter(dim);
-  //vtkm::cont::ArrayHandleCounting<vtkm::Id> indexArray(vtkm::Id(0), 1, propFieldArray[0].GetNumberOfValues());
 	thrust::counting_iterator<uint> indexArray_begin(0), indexArray_end;
 	indexArray_end = indexArray_begin + (dim.x * dim.y);
 
   for (int loop = 0; loop < loop_cnt; loop++) {
 	EvalType eval(t, make_float2(0,0), make_float2(dim.x, dim.y), spacing);
     IntegratorType integrator(eval, 3.0);
-    //ParticleAdvectionWorkletType advect(integrator);
-    //std::cout << "t: " << t << std::endl;
+    std::cout << "t: " << t << std::endl;
 
-	//vtkm::worklet::DispatcherMapField<ResetParticles<VecType,Size>> resetDispatcher(dim[0]);
-    //resetDispatcher.Invoke(indexArray, sl[loop%ttl]);
 	thrust::transform(indexArray_begin, indexArray_end, d_l[loop%ttl].begin(), resetParticles(dim));
 		//reset the current canvas
 		for (int i = 0; i < d_canvas[loop % ttl].size(); i++) {
@@ -205,7 +197,13 @@ int main(int argc, char **argv)
 				thrust::raw_pointer_cast(d_r[i].data())
 				);
 			//drawline.Run(canvasArray[i], propFieldArray[0], omegaArray, sl[i], sr[i]);
-			drawline<<<dim.x*dim.y/32, 32>>>(thrust::raw_pointer_cast(d_canvas[i].data()),
+			dim3 dimBlock(16, 16);
+			dim3 dimGrid;
+			dimGrid.x = (dim.x + dimBlock.x - 1) / dimBlock.x;
+			dimGrid.y = (dim.y + dimBlock.y - 1) / dimBlock.y;
+
+
+			drawline<<<dimBlock, dimGrid>>>(thrust::raw_pointer_cast(d_canvas[i].data()),
 				thrust::raw_pointer_cast(d_omega.data()),
 				thrust::raw_pointer_cast(d_l[i].data()),
 				thrust::raw_pointer_cast(d_r[i].data()),
@@ -218,8 +216,7 @@ int main(int argc, char **argv)
 		//sr.swap(sl);
 		d_r.swap(d_l);
 
-		//donorm.Run(propFieldArray[0], omegaArray, propFieldArray[1]);
-		thrust::transform(d_propField[0].begin(), d_propField[0].end(), d_omega.begin(), d_propField[1].begin(), normale<unsigned char>());
+		thrust::transform(d_propField[0].begin(), d_propField[0].end(), d_omega.begin(), d_propField[1].begin(), normale<FieldType>());
 		
 		h_propertyField[1] = d_propField[1];
     std::stringstream fn;
@@ -232,16 +229,18 @@ int main(int argc, char **argv)
 	dim3 dimGrid;
 	dimGrid.x = (dim.x + dimBlock.x - 1) / dimBlock.x;
 	dimGrid.y = (dim.y + dimBlock.y - 1) / dimBlock.y;
-	sharpen<unsigned char><<<dimGrid, dimBlock>>>(
+	sharpen<FieldType, FieldType><<<dimBlock, dimGrid>>>(
 		thrust::raw_pointer_cast(d_propField[1].data()),
 		thrust::raw_pointer_cast(d_omega.data())
 		);
-    //dojitter.Run(omegaArray, texArray, canvasArray[(loop) % ttl]);
+	
+	thrust::counting_iterator<uint> _begin(0), _end;
+	_end = _begin + (dim.x * dim.y);
 
 	auto data_tex_begin = thrust::make_zip_iterator(
-		make_tuple(indexArray_begin, d_omega.begin(), d_tex.begin()));
+		make_tuple(_begin, d_omega.begin(), d_tex.begin()));
 	auto data_tex_end = thrust::make_zip_iterator(
-		make_tuple(indexArray_end, d_omega.end(), d_tex.end()));
+		make_tuple(_end, d_omega.end(), d_tex.end()));
 	thrust::transform(
 		data_tex_begin,
 		data_tex_end,
@@ -251,8 +250,7 @@ int main(int argc, char **argv)
 
     t += dt;// / (vtkm::Float32)ttl + 1.0 / (vtkm::Float32)ttl;
     reader->next(vecs);
-    //vecArray = vtkm::cont::make_ArrayHandle(&vecs[0], vecs.size());
-
+	cudaStreamSynchronize(0);
 	}
 
   auto t1 = std::chrono::high_resolution_clock::now();
@@ -262,16 +260,4 @@ int main(int argc, char **argv)
     fn << "uflic-final" << ".pnm";
 	h_propertyField[1] = d_propField[1];
     saveAs(fn.str().c_str(), h_propertyField[1], dim.x, dim.y);
-
-
-	//vtkm::rendering::Mapper mapper;
-	//vtkm::rendering::Canvas canvas(512, 512);
-	//vtkm::rendering::Scene scene;
-
-	//scene.AddActor(vtkm::rendering::Actor(
-	//	ds.GetCellSet(), ds.GetCoordinateSystem(), ds.GetField(fieldNm), colorTable));
-	//vtkm::rendering::Camera camera;
-	//SetCamera<ViewType>(camera, ds.GetCoordinateSystem().GetBounds());
-
-	//vtkm::rendering::View2D view;
 }
