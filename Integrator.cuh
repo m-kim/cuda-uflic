@@ -47,14 +47,15 @@ public:
                       float2& out) const
   {
 	  float2 k1, k2, k3, k4;
-	  k1 = k2 = k3 = k4 = make_float2(0, 0);
+	  k1.x = k2.x = k3.x = k4.x = 0.0;
+	  k1.y = k2.y = k3.y = k4.y = 0.0;
 
 #if 1
     if (!eval.Evaluate(pos, pf, k1)) {
       out = pos;
       return false;
 		}
-		normalize(k1);
+		k1 = normalize(k1);
 
 		k1 = k1 * h * 0.5;
 		k1 = k1 + pos;
@@ -63,7 +64,7 @@ public:
 			out = pos;
 			return false;
 		}
-		normalize(k2);
+		k2 = normalize(k2);
 		k1 = k1 - pos;
 
 		//v = (getVector(k1));
@@ -87,7 +88,7 @@ public:
 			return false;
 		}
 		
-		normalize(k3);
+		k3 = normalize(k3);
 		k2 = k2 - pos;
 
 		//k3 = new Particle(v);
@@ -104,7 +105,7 @@ public:
 			return false;
 		}
 
-		normalize(k4);
+		k4 = normalize(k4);
 		k3 = k3 - pos;
 		////v.Print();
 
