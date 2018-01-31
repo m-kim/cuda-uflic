@@ -1,6 +1,8 @@
 #ifndef Jitter_H
 #define Jitter_H
 
+#include <thrust/tuple.h>
+
 template<class T>
 class Jitter
 {
@@ -24,17 +26,17 @@ public:
 			+ max(min(x, dim.x - 1), static_cast<uint>(0));
 	}
 
-	
+
 	__host__ __device__
 	T operator()(const thrust::tuple<uint, T,T> &idx_data_tex) const
 	{
 		uint x, y;
-		x = idx_data_tex.get<0>() / dim.x;
-		y = idx_data_tex.get<0>() % dim.x;
+    x = thrust::get<0>(idx_data_tex) / dim.x;
+    y = thrust::get<0>(idx_data_tex) % dim.x;
 
-		T reval = idx_data_tex.get<1>();
+    T reval = thrust::get<1>(idx_data_tex);
 		if (y >= 0 && y < dim.y && x >= 0 && x < dim.x) {
-			T rnd = idx_data_tex.get<2>();
+      T rnd = thrust::get<2>(idx_data_tex);
 			if (rnd > BitSize / 2)
 				rnd -= BitSize / 2;
 

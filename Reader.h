@@ -175,8 +175,8 @@ public:
   typedef DoubleGyreField<VecType> EvalType;
   ReaderCalc(std::string fn,
              uint2 d = make_uint2(512,512),
-		    float2& _bb_min = make_float2(0,0),
-			float2 &_bb_max = make_float2(512,512),
+        const float2& _bb_min = make_float2(0,0),
+      const float2 &_bb_max = make_float2(512,512),
 
              float2 sp = make_float2(2,1))
     : Reader<VecType, ReaderCalc>(fn,

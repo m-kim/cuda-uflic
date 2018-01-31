@@ -109,7 +109,8 @@ int main(int argc, char **argv)
     x = atoi(argv[1]);
     y = atoi(argv[2]);
   }
-  std::shared_ptr<Reader<VecType,ReaderCalc<VecType>>> reader(new ReaderCalc<VecType>("XGC_", make_uint2(x,y), make_float2(0,0),make_float2(x,y)));
+  std::string fstr("XGC_");
+  std::shared_ptr<Reader<VecType,ReaderCalc<VecType>>> reader(new ReaderCalc<VecType>(fstr, make_uint2(x,y), make_float2(0,0),make_float2(x,y)));
   typedef DoubleGyreField<VecType> EvalType;
 
 

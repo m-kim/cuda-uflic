@@ -23,7 +23,9 @@ cmake_minimum_required(VERSION 3.3)
 project(cuda-uflic LANGUAGES CXX CUDA)
 
 find_package(CUDA QUIET REQUIRED)
-
+set (CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+list(APPEND CMAKE_CUDA_FLAGS  "-std=c++11")
 set(UFLIC_SRC
   main.cu
 )
