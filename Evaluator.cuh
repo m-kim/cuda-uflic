@@ -87,7 +87,7 @@ public:
   {
     //if (!bounds.Contains(pos))
     //  return false;
-    outVel.x = calcU(spacing.x * pos.x / dim.x, spacing.x * pos.x / dim.y, t);
+    outVel.x = calcU(spacing.x * pos.x / dim.x, spacing.y * pos.y / dim.y, t);
     outVel.y = calcV(spacing.x * pos.x / dim.x, spacing.y * pos.y / dim.y, t);
 		//vtkm::Float32 norm = outVel[0] * outVel[0] + outVel[1] * outVel[1];
 		//norm = sqrt(norm);
