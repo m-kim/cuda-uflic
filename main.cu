@@ -24,7 +24,7 @@ template<class T>
 struct normale {
 	__host__ __device__ T operator()(const T &x, const T &y) const {
 		T reval = 0;
-		if (x > 0)
+    if (x > 0)
 			reval = x / y;
 
 		return reval;
@@ -89,7 +89,7 @@ int main(int argc, char **argv)
 {
 	const size_t ttl = 4, loop_cnt = 12;
 	typedef float VecType;
-	typedef uint FieldType;
+  typedef int FieldType;
 
   typedef float2 VecField;
 
