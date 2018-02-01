@@ -64,8 +64,10 @@ struct prg
 
 template<typename VecComponentType>
 void saveAs(std::string fileName, 
-	thrust::host_vector<VecComponentType> canvas, 
+  thrust::device_vector<VecComponentType> d_canvas,
 	size_t Width, size_t Height) {
+
+  thrust::host_vector<VecComponentType> canvas = d_canvas;
 	std::ofstream of(fileName.c_str(), std::ios_base::binary | std::ios_base::out);
 	of << "P6\n" << Width << " " << Height << "\n" << 255 << "\n";
 	//ColorBufferType::PortalConstControl colorPortal = this->ColorBuffer.GetPortalConstControl();
@@ -218,10 +220,9 @@ int main(int argc, char **argv)
 
 		thrust::transform(d_propField[0].begin(), d_propField[0].end(), d_omega.begin(), d_propField[1].begin(), normale<FieldType>());
 		
-		h_propertyField[1] = d_propField[1];
     std::stringstream fn;
     fn << "uflic-" << loop << ".pnm";
-    saveAs(fn.str().c_str(), h_propertyField[1], dim.x, dim.y);
+    saveAs(fn.str().c_str(), d_propField[1], dim.x, dim.y);
 
     //REUSE omegaArray as a temporary cache to sharpen
     //dosharp.Run(propFieldArray[1], omegaArray);
@@ -233,20 +234,17 @@ int main(int argc, char **argv)
 		thrust::raw_pointer_cast(d_propField[1].data()),
 		thrust::raw_pointer_cast(d_omega.data())
 		);
-	
+
 	thrust::counting_iterator<uint> _begin(0), _end;
 	_end = _begin + (dim.x * dim.y);
 
-	auto data_tex_begin = thrust::make_zip_iterator(
-		make_tuple(_begin, d_omega.begin(), d_tex.begin()));
-	auto data_tex_end = thrust::make_zip_iterator(
-		make_tuple(_end, d_omega.end(), d_tex.end()));
-	thrust::transform(
-		data_tex_begin,
-		data_tex_end,
-		d_canvas[(loop) % ttl].begin(),
-		Jitter<FieldType>(dim, 256, 256 * 0.1, 256 * 0.9));
-
+  auto data_tex_begin = thrust::make_zip_iterator(
+    make_tuple(_begin, d_omega.begin(), d_tex.begin()));
+  thrust::transform(
+    data_tex_begin,
+    data_tex_begin + d_omega.size(),
+    d_canvas[(loop) % ttl].begin(),
+    Jitter<FieldType>(dim, 255, 255 * 0.1, 255 * 0.9));
 
     t += dt;// / (vtkm::Float32)ttl + 1.0 / (vtkm::Float32)ttl;
     reader->next(vecs);
@@ -258,6 +256,5 @@ int main(int argc, char **argv)
   std::cout << "Finished dt: " << dt << " cnt: " << loop_cnt << " time: " << std::chrono::duration<double>(t1-t0).count() << "s" << std::endl;
     std::stringstream fn;
     fn << "uflic-final" << ".pnm";
-	h_propertyField[1] = d_propField[1];
-    saveAs(fn.str().c_str(), h_propertyField[1], dim.x, dim.y);
+    saveAs(fn.str().c_str(), d_propField[1], dim.x, dim.y);
 }

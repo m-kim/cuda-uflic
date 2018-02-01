@@ -31,8 +31,8 @@ public:
 	T operator()(const thrust::tuple<uint, T,T> &idx_data_tex) const
 	{
 		uint x, y;
-    x = thrust::get<0>(idx_data_tex) / dim.x;
-    y = thrust::get<0>(idx_data_tex) % dim.x;
+    y = thrust::get<0>(idx_data_tex) / dim.x;
+    x = thrust::get<0>(idx_data_tex) % dim.x;
 
     T reval = thrust::get<1>(idx_data_tex);
 		if (y >= 0 && y < dim.y && x >= 0 && x < dim.x) {
