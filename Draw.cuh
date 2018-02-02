@@ -38,8 +38,10 @@ void drawline(
 			for (int i = 0; i<N; i++) {
 				if (!outside(make_float2(round(p.x), roundf(p.y)), make_uint2(blockDim.x * gridDim.x, blockDim.y*gridDim.y))) {
 					size_t idx = static_cast<size_t>(roundf(p.y))*blockDim.x*gridDim.x + static_cast<size_t>(roundf(p.x));
-					field[idx] += val;//color(255,255,255);
-					omega[idx]++;
+          //field[idx] += val;//color(255,255,255);
+          //omega[idx]++;
+          atomicAdd(field + idx, val);
+          atomicAdd(omega + idx, 1);
 				}
 				p += s;
 			}
