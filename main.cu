@@ -55,7 +55,7 @@ struct prg
 		float operator()(const unsigned int n) const
 	{
 		thrust::default_random_engine rng;
-		thrust::uniform_real_distribution<unsigned char> dist(a, b);
+    thrust::uniform_int_distribution<unsigned char> dist(a, b);
 		rng.discard(n);
 
 		return dist(rng);
@@ -89,8 +89,8 @@ void saveAs(std::string fileName,
 
 int main(int argc, char **argv)
 {
-	const size_t ttl = 4, loop_cnt = 12;
-	typedef float VecType;
+  const size_t ttl = 10, loop_cnt = 75;
+  typedef float VecType;
   typedef int FieldType;
 
   typedef float2 VecField;
@@ -105,8 +105,8 @@ int main(int argc, char **argv)
   //typedef VectorField<VecType,Size> EvalType;
 
 
-  int x = 256;
-  int y = 128;
+  int x = 512;
+  int y = 256;
   if (argc > 1){
     x = atoi(argv[1]);
     y = atoi(argv[2]);
@@ -121,27 +121,26 @@ int main(int argc, char **argv)
 
   reader->read(vecs);
 
+  cudaFree(0);
   auto t0 = std::chrono::high_resolution_clock::now();
 
 
   uint2 dim = reader->dim;
   float2 spacing = reader->spacing;
   //Bounds bounds = reader->bounds;
+  thrust::counting_iterator<uint> indexArray_begin(0), indexArray_end;
+  indexArray_end = indexArray_begin + (dim.x * dim.y);
 
-	std::vector<thrust::host_vector<VecField>> h_l(ttl), h_r(ttl);
 
-  for (int i = 0; i < ttl; i++) {
-    for (int y = 0; y<dim.y; y++) {
-      for (int x = 0; x<dim.x; x++) {
-        h_l[i].push_back(make_float2(x + 0.5, y + 0.5));
-        h_r[i].push_back(make_float2(x + 0.5, y + 0.5));
-      }
-    }
-  }
   std::vector<thrust::device_vector<VecField>> d_l(ttl), d_r(ttl);
 	for (int i = 0; i<ttl; i++) {
-		d_l[i] = h_l[i];
-		d_r[i] = h_r[i];
+//		d_l[i] = h_l[i];
+//		d_r[i] = h_r[i];
+    d_l[i].resize(dim.x*dim.y);
+    d_r[i].resize(dim.x*dim.y);
+    thrust::transform(indexArray_begin, indexArray_end, d_l[i].begin(), resetParticles(dim));
+    thrust::transform(indexArray_begin, indexArray_end, d_r[i].begin(), resetParticles(dim));
+
 	}
 
 	
@@ -171,19 +170,19 @@ int main(int argc, char **argv)
 	d_omega = h_omega;
 	d_tex = h_tex;
 
-	thrust::counting_iterator<uint> indexArray_begin(0), indexArray_end;
-	indexArray_end = indexArray_begin + (dim.x * dim.y);
 
   for (int loop = 0; loop < loop_cnt; loop++) {
 	EvalType eval(t, make_float2(0,0), make_float2(dim.x, dim.y), spacing);
     IntegratorType integrator(eval, 3.0);
-    std::cout << "t: " << t << std::endl;
+    //std::cout << "t: " << t << std::endl;
 
 	thrust::transform(indexArray_begin, indexArray_end, d_l[loop%ttl].begin(), resetParticles(dim));
 		//reset the current canvas
-		for (int i = 0; i < d_canvas[loop % ttl].size(); i++) {
-			d_canvas[loop % ttl][i] = rand() % 255;
-		}
+  thrust::transform(indexArray_begin, indexArray_end, d_canvas[loop%ttl].begin(), prg(0,255));
+
+//		for (int i = 0; i < d_canvas[loop % ttl].size(); i++) {
+//			d_canvas[loop % ttl][i] = rand() % 255;
+//		}
 
     thrust::fill(d_propField[0].begin(), d_propField[0].end(), 0);
 	thrust::fill(d_propField[1].begin(), d_propField[1].end(), 0);
@@ -220,9 +219,9 @@ int main(int argc, char **argv)
 
 		thrust::transform(d_propField[0].begin(), d_propField[0].end(), d_omega.begin(), d_propField[1].begin(), normale<FieldType>());
 		
-    std::stringstream fn;
-    fn << "uflic-" << loop << ".pnm";
-    saveAs(fn.str().c_str(), d_propField[1], dim.x, dim.y);
+//    std::stringstream fn;
+//    fn << "uflic-" << loop << ".pnm";
+//    saveAs(fn.str().c_str(), d_propField[1], dim.x, dim.y);
 
     //REUSE omegaArray as a temporary cache to sharpen
     //dosharp.Run(propFieldArray[1], omegaArray);
