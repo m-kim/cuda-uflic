@@ -7,10 +7,12 @@
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/random.h>
 #include <thrust/iterator/zip_iterator.h>
+#include <thrust/system/cuda/experimental/pinned_allocator.h>
 #include <iostream>
 #include <fstream>
 #include <chrono>
 #include <type_traits>
+
 
 #include "Draw.cuh"
 #include "Sharpen.cuh"
@@ -87,23 +89,35 @@ void saveAs(std::string fileName,
 }
 
 
+#define RUN_BFIELD
+
 int main(int argc, char **argv)
 {
-  const size_t ttl = 10, loop_cnt = 75;
+  const size_t ttl = 10;
+  size_t loop_cnt = 75;
   typedef float VecType;
   typedef int FieldType;
 
   typedef float2 VecField;
 
 
-  thrust::host_vector<VecField> vecs;
-  thrust::device_vector<VecField> d_vecs;
-  //std::shared_ptr<Reader<VecType, Size, ReaderVTK<VecType, Size>>> reader(new ReaderVTK<VecType, Size>("BField_2d.vtk"));
-  //std::shared_ptr<Reader<VecType, Size,  ReaderPS<VecType, Size,ReaderXGC<VecType,Size>>>> reader(new ReaderPS<VecType, Size, ReaderXGC<VecType,Size>>("/home/mkim/vtkm-uflic/psi2q/2D_packed/psi2D_packed_normalized_256_99.vec", vtkm::Id2(256,256), Bounds(0,256,0,256)));
-  //std::shared_ptr<ReaderPS<VecType, Size, ReaderXGC<VecType, Size>>> reader(new ReaderXGC<VecType, Size>("/home/mkim/vtkm-uflic/psi2q/2D_packed/psi2D_packed_512_", vtkm::Id2(512,512), Bounds(0,512,0,512), loop_cnt));
-  //std::shared_ptr<ReaderPS<VecType, Size, ReaderXGC<VecType, Size>>> reader(new ReaderXGC<VecType, Size>("XGC_", vtkm::Id2(96,256), Bounds(0,96,0,256)));
-  //typedef VectorField<VecType,Size> EvalType;
+  std::vector<thrust::host_vector<VecField, thrust::cuda::experimental::pinned_allocator<VecField>>> vecs(2);
+  std::vector<thrust::device_vector<VecField>> d_vecs(2);
+#ifdef RUN_BFIELD
+  std::shared_ptr<Reader<VecField, ReaderVTK<VecField>>> reader(new ReaderVTK<VecField>("/home/mkim/vtkm-uflic/BField_2d.vtk"));
+  typedef VectorField<VecType> EvalType;
+  loop_cnt = 34;
+#elif defined RUN_PSI2Q
+  //std::shared_ptr<Reader<VecField,  ReaderPS<VecField,ReaderXGC<VecType,Size>>>> reader(new ReaderPS<VecField, ReaderXGC<VecField>>("/home/mkim/vtkm-uflic/psi2q/2D_packed/psi2D_packed_normalized_256_99.vec", uint2(256,256), float2(0,0), float2(256,256)));
+  std::string fstr("/home/mkim/vtkm-uflic/psi2q/2D_packed/psi2D_packed_512_");
+  std::shared_ptr<ReaderPS<VecField, ReaderVEL<VecField>>> reader(new ReaderVEL<VecField>(fstr, make_uint2(512,512), make_float2(0.0f,0.0f), make_float2(512.0f, 512.0f), loop_cnt));
+  typedef VectorField<VecType> EvalType;
 
+#elif defined RUN_XGC
+  std::string fstr("/home/mkim/vtkm-uflic/xgc/XGC_");
+  std::shared_ptr<ReaderPS<VecField, ReaderVEL<VecField>>> reader(new ReaderVEL<VecField>(fstr, make_uint2(96,256), make_float2(0,0), make_float2(96,256), 149));
+  typedef VectorField<VecType> EvalType;
+#else
 
   int x = 512;
   int y = 256;
@@ -112,14 +126,15 @@ int main(int argc, char **argv)
     y = atoi(argv[2]);
   }
   std::string fstr("XGC_");
-  std::shared_ptr<Reader<VecType,ReaderCalc<VecType>>> reader(new ReaderCalc<VecType>(fstr, make_uint2(x,y), make_float2(0,0),make_float2(x,y)));
+  std::shared_ptr<Reader<VecField,ReaderCalc<VecField>>> reader(new ReaderCalc<VecField>(fstr, make_uint2(x,y), make_float2(0,0),make_float2(x,y)));
   typedef DoubleGyreField<VecType> EvalType;
-
+#endif
 
 
   typedef RK4Integrator<EvalType, VecType> IntegratorType;
 
-  reader->read(vecs);
+  reader->read(vecs[0]);
+  d_vecs[0] = vecs[0];
 
   cudaFree(0);
   auto t0 = std::chrono::high_resolution_clock::now();
@@ -147,32 +162,22 @@ int main(int argc, char **argv)
 	//vecArray = vtkm::cont::make_ArrayHandle(&vecs[0], vecs.size());
 
 
-	thrust::host_vector<FieldType> h_canvas[ttl], h_propertyField[2], h_omega(dim.x * dim.y, 0), h_tex(dim.x * dim.y, 0);
-	VecType t = 0;
+  thrust::device_vector<FieldType > d_canvas[ttl], d_propField[2], d_omega(dim.x*dim.y,0), d_tex;
+  VecType t = 0;
 	const VecType dt = 0.1;
-		for (int i = 0; i < 2; i++) {
-		h_propertyField[i].resize(dim.x * dim.x, 0);
+  for (int i = 0; i < 2; i++) {
+    d_propField[i].resize(dim.x * dim.x, 0);
 	}
 
-	for (int i = 0; i < ttl; i++) {
-		h_canvas[i].resize(dim.x * dim.y, 0);
-	}
-	for (int i = 0; i < h_canvas[0].size(); i++) {
-		h_tex[i] = h_canvas[0][i] = rand() % 255;
-	}
-
-	thrust::device_vector<FieldType > d_canvas[ttl], d_propField[2], d_omega, d_tex;
-	for (int i = 0; i < ttl; i++) {
-		d_canvas[i] = h_canvas[i];
-	}
-	d_propField[0] = h_propertyField[0];
-	d_propField[1] = h_propertyField[1];
-	d_omega = h_omega;
-	d_tex = h_tex;
-
+  for (int i = 0; i < ttl; i++) {
+    d_canvas[i].resize(dim.x * dim.y, 0);
+  }
+  d_tex.resize(dim.x*dim.y);
+  thrust::transform(indexArray_begin, indexArray_end, d_tex.begin(), prg(0,255));
+  d_canvas[0] = d_tex;
 
   for (int loop = 0; loop < loop_cnt; loop++) {
-	EvalType eval(t, make_float2(0,0), make_float2(dim.x, dim.y), spacing);
+    EvalType eval(t, make_float2(0,0), make_float2(dim.x, dim.y), spacing);
     IntegratorType integrator(eval, 3.0);
     //std::cout << "t: " << t << std::endl;
 
@@ -191,20 +196,20 @@ int main(int argc, char **argv)
 		for (int i = 0; i < min(ttl, static_cast<size_t>(loop)+1); i++) {
 			//advect.Run(sl[i], sr[i], vecArray);
 			
-			advect<IntegratorType, VecField, VecField> << <dim.x*dim.y/32, 32 >> > (
+      advect<IntegratorType, VecField, VecField> << <dim.x*dim.y/128, 128 >> > (
 				thrust::raw_pointer_cast(d_l[i].data()),
-				thrust::raw_pointer_cast(vecs.data()),
+        thrust::raw_pointer_cast(d_vecs[0].data()),
 				integrator,
 				thrust::raw_pointer_cast(d_r[i].data())
 				);
 			//drawline.Run(canvasArray[i], propFieldArray[0], omegaArray, sl[i], sr[i]);
-			dim3 dimBlock(16, 16);
+      dim3 dimBlock(8,16);
 			dim3 dimGrid;
 			dimGrid.x = (dim.x + dimBlock.x - 1) / dimBlock.x;
 			dimGrid.y = (dim.y + dimBlock.y - 1) / dimBlock.y;
 
 
-			drawline<<<dimBlock, dimGrid>>>(thrust::raw_pointer_cast(d_canvas[i].data()),
+      drawline<<<dimGrid,dimBlock>>>(thrust::raw_pointer_cast(d_canvas[i].data()),
 				thrust::raw_pointer_cast(d_omega.data()),
 				thrust::raw_pointer_cast(d_l[i].data()),
 				thrust::raw_pointer_cast(d_r[i].data()),
@@ -225,11 +230,11 @@ int main(int argc, char **argv)
 
     //REUSE omegaArray as a temporary cache to sharpen
     //dosharp.Run(propFieldArray[1], omegaArray);
-	dim3 dimBlock(16, 16);
+  dim3 dimBlock(8,16);
 	dim3 dimGrid;
-	dimGrid.x = (dim.x + dimBlock.x - 1) / dimBlock.x;
+  dimGrid.x = (dim.x + dimBlock.x - 1) / dimBlock.x;
 	dimGrid.y = (dim.y + dimBlock.y - 1) / dimBlock.y;
-	sharpen<FieldType, FieldType><<<dimBlock, dimGrid>>>(
+  sharpen<FieldType, FieldType><<<dimGrid, dimBlock>>>(
 		thrust::raw_pointer_cast(d_propField[1].data()),
 		thrust::raw_pointer_cast(d_omega.data())
 		);
@@ -246,9 +251,10 @@ int main(int argc, char **argv)
     Jitter<FieldType>(dim, 255, 255 * 0.1, 255 * 0.9));
 
     t += dt;// / (vtkm::Float32)ttl + 1.0 / (vtkm::Float32)ttl;
-    reader->next(vecs);
-	cudaStreamSynchronize(0);
-	}
+    reader->next(vecs[0]);
+    d_vecs[0] = vecs[0];
+
+  }
 
   auto t1 = std::chrono::high_resolution_clock::now();
 

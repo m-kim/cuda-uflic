@@ -1,8 +1,8 @@
 #ifndef Evaluator_h
 #define Evaluator_h
-#include <math_constants.h>
-
-template <typename FieldType>
+#include <math.h>
+#include <helper_math.h>
+template <typename VecType>
 class VectorField
 {
 public:
@@ -12,15 +12,18 @@ public:
 
   
   VectorField(const float t,
+              const float2& bb_min,
+              const float2 &bb_max,
+
               const float2 s)
     : spacing(s),
       t(0.0)
   {
-	  dim.x = 0;// bb_max.x - bb_min.x;
-	  dim.y = 0;// bb_max.y - bb_min.y;
+    dim.x = bb_max.x - bb_min.x;
+    dim.y = bb_max.y - bb_min.y;
   }
 
-  void incrT(FieldType dt){
+  void incrT(VecType dt){
     t += dt;
   }
   template<typename VelFieldType>
@@ -33,7 +36,7 @@ public:
     if (pos.x < 0 || pos.x >= dim.x || pos.y < 0 || pos.y >= dim.y || pos.x != pos.x || pos.y != pos.y)
       return false;
 
-    outVel = vecData[floor(pos.y) * dim.x + floor(pos.x)];
+    outVel = vecData[static_cast<int>(floor(pos.y)) * dim.x + static_cast<int>(floor(pos.x))];
     return dot(outVel, outVel) > 0;
   }
 
@@ -42,8 +45,8 @@ private:
 
    uint2 dim;
   float2 spacing;
-  FieldType omega, A, epsilon;
-  FieldType t;
+  VecType omega, A, epsilon;
+  VecType t;
 
 };
 template <typename FieldType>

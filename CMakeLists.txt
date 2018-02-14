@@ -22,10 +22,11 @@
 cmake_minimum_required(VERSION 3.3)
 project(cuda-uflic LANGUAGES CXX CUDA)
 
-find_package(CUDA QUIET REQUIRED)
+string(REGEX REPLACE "include$" "samples" CUDA_SDK_ROOT_DIR ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+
+message("${CUDA_SDK_ROOT_DIR}")
+set(CMAKE_CUDA_STANDARD 11)
 set (CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-list(APPEND CMAKE_CUDA_FLAGS  "-std=c++11")
 set(UFLIC_SRC
   main.cu
 )
@@ -33,12 +34,15 @@ set(UFLIC_HDR
 	Evaluator.cuh
 	Integrator.cuh
 	Jitter.cuh
+  Reader.h
 	Sharpen.cuh
 )
-
-include_directories("${CUDA_SDK_ROOT_DIR}/common/inc")
+link_directories(/home/mkim/mark-vtk-m/build/release/lib)
+include_directories("${CUDA_SDK_ROOT_DIR}/common/inc" "/home/mkim/mark-vtk-m/build/debug/include" "/home/mkim/mark-vtk-m/")
 add_executable(UFLIC_rendering ${UFLIC_SRC} ${UFLIC_HDR} )
 
-target_link_libraries(UFLIC_rendering )
+target_link_libraries(UFLIC_rendering
+vtkm_cont-1.1
+ )
 
 
