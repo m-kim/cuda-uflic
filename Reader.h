@@ -25,9 +25,9 @@ public:
   {
 
   }
-  virtual void read(thrust::host_vector<VecType,thrust::cuda::experimental::pinned_allocator<VecType>> &in) = 0;
+  virtual void readFile() = 0;
 
-  virtual void next(thrust::host_vector<VecType,thrust::cuda::experimental::pinned_allocator<VecType>> &in){}
+  virtual void next(thrust::device_vector<VecType> &in) =0;
   uint2 dim;
   const float2 spacing;
   //vtkm::cont::DataSetBuilderUniform dataSetBuilder;
@@ -55,7 +55,7 @@ public:
     //this->ds = this->dataSetBuilder.Create(this->dim);
   }
 
-  void read(thrust::host_vector<VecType,thrust::cuda::experimental::pinned_allocator<VecType>> &in)
+  void readFile()
   {
     std::cout << this->filename.str() << std::endl;
 
@@ -73,7 +73,7 @@ public:
       std::getline(ss, tok, ' ');
       vec.y = atof(tok.c_str());
 
-      in.push_back(vec);
+      buf.push_back(vec);
       //}
     }
     //	String text = null;
@@ -89,6 +89,12 @@ public:
     //	e.printStackTrace();
     //}
   }
+  virtual void next(thrust::device_vector<VecType> &in)
+  {
+    std::swap(in, buf);
+  }
+
+  thrust::host_vector<VecType,thrust::cuda::experimental::pinned_allocator<VecType>> buf;
 };
 
 template <typename VecType>
@@ -96,18 +102,20 @@ class ReaderVTK : public Reader<VecType, ReaderVTK<VecType>>
 {
 public:
   typedef VectorField<VecType> EvalType;
+  typedef thrust::host_vector<VecType,thrust::cuda::experimental::pinned_allocator<VecType>> PinnedType;
 
-  ReaderVTK(std::string fn)
+  ReaderVTK(std::string fn, int _iter)
     : Reader<VecType, ReaderVTK>(fn,
                             make_uint2(512,512),
                                  make_float2(0,0),
                                  make_float2(512,512)
                                   ,make_float2(1,1)
                             )
+    ,iter_cnt(_iter)
   {
 
   }
-  void read(thrust::host_vector<VecType, thrust::cuda::experimental::pinned_allocator<VecType>> &in)
+  void readFile()
   {
     std::cout << this->filename.str() << std::endl;
     ds = readVTK(this->filename.str());
@@ -123,13 +131,24 @@ public:
     ah = dah.Cast<vtkm::cont::ArrayHandle<vtkm::Vec<vtkm::Float64,3>>>();
     std::cout << ah.GetNumberOfValues() << std::endl;
     loop = 20;
-    in.resize(this->dim.x * this->dim.y);
-    next(in);
+    buffer.resize(iter_cnt);
+    vec_iter = buffer.begin();
+
+    for (int i=0; i<iter_cnt; i++){
+      buffer[i].resize(this->dim.x * this->dim.y);
+      parse(buffer[i]);
+    }
   }
 
-  void next(thrust::host_vector<VecType,thrust::cuda::experimental::pinned_allocator<VecType>> &in)
+  void next(thrust::device_vector<VecType> &in)
   {
+    in = *vec_iter;
+    vec_iter++;
 
+  }
+
+  void parse(PinnedType &in)
+  {
     for (int z=0; z<this->dim.y; z++){
       for (int y=loop; y<loop+1; y++){
         for (int x=0; x<this->dim.x; x++){
@@ -169,6 +188,9 @@ public:
 
   vtkm::Id3 dim3;
   vtkm::Id loop;
+  std::vector<PinnedType> buffer;
+  typename std::vector<PinnedType>::iterator vec_iter;
+  int iter_cnt;
 };
 
 template <typename VecType>
@@ -190,9 +212,10 @@ public:
                             )
   {
   }
-  void read(thrust::host_vector<VecType,thrust::cuda::experimental::pinned_allocator<VecType>> &in)
+  void readFile()
   {
   }
+  void next(thrust::device_vector<VecType> &in){}
 };
 
 
@@ -224,11 +247,13 @@ public:
     for (int i=loop; i<min(frameCnt, 100-loop); i++){
       this->filename.str("");
       this->filename << base_fn << i << ".vel";
-      this->read(mem[i]);
+      this->readFile();
+      thrust::swap(this->buf, mem[i]);
+      this->buf.resize(0);
     }
   }
 
-  void next(thrust::host_vector<VecType,thrust::cuda::experimental::pinned_allocator<VecType>> &in)
+  void next(thrust::device_vector<VecType> &in)
   {
     in = mem[loop++];
   }

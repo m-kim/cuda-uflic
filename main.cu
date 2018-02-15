@@ -26,7 +26,7 @@ template<class T>
 struct normale {
 	__host__ __device__ T operator()(const T &x, const T &y) const {
 		T reval = 0;
-    if (x > 0)
+    if (y > 0)
 			reval = x / y;
 
 		return reval;
@@ -89,7 +89,7 @@ void saveAs(std::string fileName,
 }
 
 
-#define RUN_BFIELD
+
 
 int main(int argc, char **argv)
 {
@@ -104,11 +104,12 @@ int main(int argc, char **argv)
   std::vector<thrust::host_vector<VecField, thrust::cuda::experimental::pinned_allocator<VecField>>> vecs(2);
   std::vector<thrust::device_vector<VecField>> d_vecs(2);
 #ifdef RUN_BFIELD
-  std::shared_ptr<Reader<VecField, ReaderVTK<VecField>>> reader(new ReaderVTK<VecField>("/home/mkim/vtkm-uflic/BField_2d.vtk"));
+  std::shared_ptr<Reader<VecField, ReaderVTK<VecField>>> reader(new ReaderVTK<VecField>("/home/mkim/vtkm-uflic/BField_2d.vtk", 34));
   typedef VectorField<VecType> EvalType;
   loop_cnt = 34;
 #elif defined RUN_PSI2Q
   //std::shared_ptr<Reader<VecField,  ReaderPS<VecField,ReaderXGC<VecType,Size>>>> reader(new ReaderPS<VecField, ReaderXGC<VecField>>("/home/mkim/vtkm-uflic/psi2q/2D_packed/psi2D_packed_normalized_256_99.vec", uint2(256,256), float2(0,0), float2(256,256)));
+  loop_cnt = 99;
   std::string fstr("/home/mkim/vtkm-uflic/psi2q/2D_packed/psi2D_packed_512_");
   std::shared_ptr<ReaderPS<VecField, ReaderVEL<VecField>>> reader(new ReaderVEL<VecField>(fstr, make_uint2(512,512), make_float2(0.0f,0.0f), make_float2(512.0f, 512.0f), loop_cnt));
   typedef VectorField<VecType> EvalType;
@@ -133,8 +134,7 @@ int main(int argc, char **argv)
 
   typedef RK4Integrator<EvalType, VecType> IntegratorType;
 
-  reader->read(vecs[0]);
-  d_vecs[0] = vecs[0];
+  reader->readFile();
 
   cudaFree(0);
   auto t0 = std::chrono::high_resolution_clock::now();
@@ -177,21 +177,21 @@ int main(int argc, char **argv)
   d_canvas[0] = d_tex;
 
   for (int loop = 0; loop < loop_cnt; loop++) {
+
+
+    //reader->next(d_vecs[0]);
+
     EvalType eval(t, make_float2(0,0), make_float2(dim.x, dim.y), spacing);
     IntegratorType integrator(eval, 3.0);
     //std::cout << "t: " << t << std::endl;
 
-	thrust::transform(indexArray_begin, indexArray_end, d_l[loop%ttl].begin(), resetParticles(dim));
+    thrust::transform(indexArray_begin, indexArray_end, d_l[loop%ttl].begin(), resetParticles(dim));
 		//reset the current canvas
-  thrust::transform(indexArray_begin, indexArray_end, d_canvas[loop%ttl].begin(), prg(0,255));
-
-//		for (int i = 0; i < d_canvas[loop % ttl].size(); i++) {
-//			d_canvas[loop % ttl][i] = rand() % 255;
-//		}
+    thrust::transform(indexArray_begin, indexArray_end, d_canvas[loop%ttl].begin(), prg(0,255));
 
     thrust::fill(d_propField[0].begin(), d_propField[0].end(), 0);
-	thrust::fill(d_propField[1].begin(), d_propField[1].end(), 0);
-	thrust::fill(d_omega.begin(), d_omega.end(), 0);
+    thrust::fill(d_propField[1].begin(), d_propField[1].end(), 0);
+    thrust::fill(d_omega.begin(), d_omega.end(), 0);
 
 		for (int i = 0; i < min(ttl, static_cast<size_t>(loop)+1); i++) {
 			//advect.Run(sl[i], sr[i], vecArray);
@@ -203,7 +203,7 @@ int main(int argc, char **argv)
 				thrust::raw_pointer_cast(d_r[i].data())
 				);
 			//drawline.Run(canvasArray[i], propFieldArray[0], omegaArray, sl[i], sr[i]);
-      dim3 dimBlock(8,16);
+      dim3 dimBlock(16,8);
 			dim3 dimGrid;
 			dimGrid.x = (dim.x + dimBlock.x - 1) / dimBlock.x;
 			dimGrid.y = (dim.y + dimBlock.y - 1) / dimBlock.y;
@@ -230,7 +230,7 @@ int main(int argc, char **argv)
 
     //REUSE omegaArray as a temporary cache to sharpen
     //dosharp.Run(propFieldArray[1], omegaArray);
-  dim3 dimBlock(8,16);
+  dim3 dimBlock(16,8);
 	dim3 dimGrid;
   dimGrid.x = (dim.x + dimBlock.x - 1) / dimBlock.x;
 	dimGrid.y = (dim.y + dimBlock.y - 1) / dimBlock.y;
@@ -251,11 +251,10 @@ int main(int argc, char **argv)
     Jitter<FieldType>(dim, 255, 255 * 0.1, 255 * 0.9));
 
     t += dt;// / (vtkm::Float32)ttl + 1.0 / (vtkm::Float32)ttl;
-    reader->next(vecs[0]);
-    d_vecs[0] = vecs[0];
+
+    cudaStreamSynchronize(0);
 
   }
-
   auto t1 = std::chrono::high_resolution_clock::now();
 
   std::cout << "Finished dt: " << dt << " cnt: " << loop_cnt << " time: " << std::chrono::duration<double>(t1-t0).count() << "s" << std::endl;
