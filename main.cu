@@ -22,6 +22,7 @@
 #include "UFLIC.cuh"
 #include "Reader.h"
 
+bool do_print = false;
 template<class T>
 struct normale {
 	__host__ __device__ T operator()(const T &x, const T &y) const {
@@ -73,32 +74,28 @@ void saveAs(std::string fileName,
 	std::ofstream of(fileName.c_str(), std::ios_base::binary | std::ios_base::out);
 	of << "P6\n" << Width << " " << Height << "\n" << 255 << "\n";
 	//ColorBufferType::PortalConstControl colorPortal = this->ColorBuffer.GetPortalConstControl();
-	for (size_t yIndex = (Height - 1); yIndex > 0; yIndex--)
-	{
-		for (size_t xIndex = 0; xIndex < Width; xIndex++)
-		{
-			VecComponentType val = canvas[yIndex * Width + xIndex];
-			
-			uint4 tuple = make_uint4(val, val, val, val);
-			of << (unsigned char)(tuple.x);
-			of << (unsigned char)(tuple.y);
-			of << (unsigned char)(tuple.z);
-		}
-	}
-	of.close();
+  for (int yIndex = (Height - 1); yIndex >= 0; yIndex--)
+  {
+    for (int xIndex = 0; xIndex < Width; xIndex++)
+    {
+      VecComponentType val = canvas[yIndex * Width + xIndex];
+
+      uint4 tuple = make_uint4(val, val, val, val);
+      of << (unsigned char)(tuple.x);
+      of << (unsigned char)(tuple.y);
+      of << (unsigned char)(tuple.z);
+    }
+  }
+  of.close();
 }
 
 
 
 
-int main(int argc, char **argv)
+template<typename EvalType, typename VecType, typename FieldType, typename VecField>
+void run( std::shared_ptr<Reader<VecField>> reader)
 {
   const size_t ttl = 10;
-  size_t loop_cnt = 75;
-  typedef float VecType;
-  typedef int FieldType;
-
-  typedef float2 VecField;
 
 
   std::vector<thrust::host_vector<VecField, thrust::cuda::experimental::pinned_allocator<VecField>>> vecs(2);
@@ -120,18 +117,10 @@ int main(int argc, char **argv)
   typedef VectorField<VecType> EvalType;
 #else
 
-  int x = 512;
-  int y = 256;
-  if (argc > 1){
-    x = atoi(argv[1]);
-    y = atoi(argv[2]);
-  }
-  std::string fstr("XGC_");
-  std::shared_ptr<Reader<VecField,ReaderCalc<VecField>>> reader(new ReaderCalc<VecField>(fstr, make_uint2(x,y), make_float2(0,0),make_float2(x,y)));
-  typedef DoubleGyreField<VecType> EvalType;
 #endif
 
 
+  size_t loop_cnt = reader->iter_cnt;
   typedef RK4Integrator<EvalType, VecType> IntegratorType;
 
   reader->readFile();
@@ -179,7 +168,7 @@ int main(int argc, char **argv)
   for (int loop = 0; loop < loop_cnt; loop++) {
 
 
-    //reader->next(d_vecs[0]);
+    reader->next(d_vecs[0]);
 
     EvalType eval(t, make_float2(0,0), make_float2(dim.x, dim.y), spacing);
     IntegratorType integrator(eval, 3.0);
@@ -223,10 +212,13 @@ int main(int argc, char **argv)
 		d_r.swap(d_l);
 
 		thrust::transform(d_propField[0].begin(), d_propField[0].end(), d_omega.begin(), d_propField[1].begin(), normale<FieldType>());
-		
-//    std::stringstream fn;
-//    fn << "uflic-" << loop << ".pnm";
-//    saveAs(fn.str().c_str(), d_propField[1], dim.x, dim.y);
+
+    if (do_print){
+      std::stringstream fn;
+      fn << "uflic-" << loop << ".pnm";
+      saveAs(fn.str().c_str(), d_propField[1], dim.x, dim.y);
+
+    }
 
     //REUSE omegaArray as a temporary cache to sharpen
     //dosharp.Run(propFieldArray[1], omegaArray);
@@ -257,8 +249,72 @@ int main(int argc, char **argv)
   }
   auto t1 = std::chrono::high_resolution_clock::now();
 
-  std::cout << "Finished dt: " << dt << " cnt: " << loop_cnt << " time: " << std::chrono::duration<double>(t1-t0).count() << "s" << std::endl;
+  std::cout << "Finished dt: " << dt << " cnt: " << loop_cnt << " time: " << std::chrono::duration<double>(t1-t0).count() << " s" << std::endl;
     std::stringstream fn;
     fn << "uflic-final" << ".pnm";
     saveAs(fn.str().c_str(), d_propField[1], dim.x, dim.y);
+}
+
+std::tuple<int,int,int>
+parse(int argc, char **argv){
+
+  int x = 512;
+  int y = 256;
+  int which = 0;
+
+  for (int i=1; i<argc; i++){
+    if (!strcmp(argv[i], "bfield")){
+      which = 1;
+    }
+    else if (!strcmp(argv[i], "PSI")){
+      which = 2;
+    }
+    else if (!strcmp(argv[i], "dims")){
+      if (i+1 < argc && i+2 < argc){
+        x = atoi(argv[i+1]);
+        y = atoi(argv[i+2]);
+        i += 2;
+      }
+    }
+    else if (!strcmp(argv[i], "print")){
+      do_print = true;
+    }
+  }
+
+  return std::make_tuple(which,x,y);
+}
+
+int main(int argc, char **argv)
+{
+  typedef VTKM_DEFAULT_DEVICE_ADAPTER_TAG DeviceAdapter;
+  typedef float VecType;
+  typedef int FieldType;
+  typedef float2 VecField;
+
+  std::tuple<int, int, int> ret;
+
+  ret = parse(argc,argv);
+
+  std::shared_ptr<Reader<VecField>> reader;
+
+  if (std::get<0>(ret) == 1){
+    std::string fstr("/home/mkim/vtkm-uflic/BField_2d.vtk");
+    reader = std::shared_ptr<ReaderVTK<VecField>>(new ReaderVTK<VecField>(fstr, 34));
+    run<VectorField<VecType>,VecType,FieldType,VecField>(reader);
+  }
+
+  else if (std::get<0>(ret) == 2){
+    //std::shared_ptr<Reader<VecType,  ReaderPS<VecType,ReaderVEL<VecType>>>> reader(new ReaderPS<VecType, ReaderVEL<VecType>>("/home/mkim/vtkm-uflic/psi2q/2D_packed/psi2D_packed_normalized_256_99.vec", vtkm::Id2(256,256), Bounds(0,256,0,256)));
+    std::string fstr("/home/mkim/vtkm-uflic/psi2q/2D_packed/psi2D_packed_512_");
+    reader = std::shared_ptr<ReaderVEL<VecField>>(new ReaderVEL<VecField>(fstr, make_uint2(512,512), make_float2(0,0), make_float2(512,512), 99));
+    run<VectorField<VecType>,VecType,FieldType,VecField>(reader);
+  }
+  else{
+
+    int x = std::get<1>(ret);
+    int y = std::get<2>(ret);
+    std::string fstr("XGC_");
+    reader = std::shared_ptr<ReaderCalc<VecField>>(new ReaderCalc<VecField>(fstr, make_uint2(x,y), make_float2(0,0), make_float2(x,y), make_float2(2,1), 99));
+    run<DoubleGyreField<VecType>,VecType,FieldType,VecField>(reader);
+  }
 }

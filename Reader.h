@@ -5,23 +5,24 @@
 #include <vtkm/cont/DataSet.h>
 #include <vtkm/cont/DataSetBuilderUniform.h>
 #include <vtkm/io/reader/VTKDataSetReader.h>
-template <typename VecType, class Derived>
+template <typename VecType>
 class Reader
 {
 public:
-  typedef Derived DerivedType;
 
   Reader(){}
   Reader(std::string fn,
          uint2 d,
 		  const float2& _bb_min,
 		  const float2 &_bb_max,
-	  float2 sp)
+    float2 sp,
+         const uint &_iter_cnt)
     : filename(fn),
       dim(d),
       bb_min(_bb_min),
 	  bb_max(_bb_max),
-        spacing(sp)
+        spacing(sp),
+        iter_cnt(_iter_cnt)
   {
 
   }
@@ -34,21 +35,24 @@ public:
   //vtkm::cont::DataSet ds;
   std::stringstream filename;
   float2 bb_min, bb_max;
+  const uint iter_cnt;
 };
 
-template <typename VecType, class Derived>
-class ReaderPS : public Reader<VecType, ReaderPS<VecType, Derived>>
+template <typename VecType>
+class ReaderPS : public Reader<VecType>
 {
 public:
   ReaderPS(std::string fn,
            uint2 d,
            const float2& _bb_min,
-           const float2 &_bb_max)
-    : Reader<VecType, ReaderPS>(fn,
+           const float2 &_bb_max,
+           const uint _iter_cnt = 0)
+    : Reader<VecType>(fn,
                             d,
                             _bb_min,
                             _bb_max,
-                            make_float2(1,1)
+                            make_float2(1,1),
+                      _iter_cnt
                             )
   {
 
@@ -91,27 +95,27 @@ public:
   }
   virtual void next(thrust::device_vector<VecType> &in)
   {
-    std::swap(in, buf);
+    thrust::swap(in, buf);
   }
 
   thrust::host_vector<VecType,thrust::cuda::experimental::pinned_allocator<VecType>> buf;
 };
 
 template <typename VecType>
-class ReaderVTK : public Reader<VecType, ReaderVTK<VecType>>
+class ReaderVTK : public Reader<VecType>
 {
 public:
   typedef VectorField<VecType> EvalType;
   typedef thrust::host_vector<VecType,thrust::cuda::experimental::pinned_allocator<VecType>> PinnedType;
 
-  ReaderVTK(std::string fn, int _iter)
-    : Reader<VecType, ReaderVTK>(fn,
+  ReaderVTK(std::string fn, const uint &_iter)
+    : Reader<VecType>(fn,
                             make_uint2(512,512),
                                  make_float2(0,0),
                                  make_float2(512,512)
-                                  ,make_float2(1,1)
+                                  ,make_float2(1,1),
+                      _iter
                             )
-    ,iter_cnt(_iter)
   {
 
   }
@@ -131,10 +135,10 @@ public:
     ah = dah.Cast<vtkm::cont::ArrayHandle<vtkm::Vec<vtkm::Float64,3>>>();
     std::cout << ah.GetNumberOfValues() << std::endl;
     loop = 20;
-    buffer.resize(iter_cnt);
+    buffer.resize(this->iter_cnt);
     vec_iter = buffer.begin();
 
-    for (int i=0; i<iter_cnt; i++){
+    for (int i=0; i<this->iter_cnt; i++){
       buffer[i].resize(this->dim.x * this->dim.y);
       parse(buffer[i]);
     }
@@ -190,25 +194,25 @@ public:
   vtkm::Id loop;
   std::vector<PinnedType> buffer;
   typename std::vector<PinnedType>::iterator vec_iter;
-  int iter_cnt;
 };
 
 template <typename VecType>
-class ReaderCalc : public Reader<VecType, ReaderCalc<VecType>>
+class ReaderCalc : public Reader<VecType>
 {
 public:
-  typedef DoubleGyreField<VecType> EvalType;
   ReaderCalc(std::string fn,
-             uint2 d = make_uint2(512,512),
-        const float2& _bb_min = make_float2(0,0),
-      const float2 &_bb_max = make_float2(512,512),
+             uint2 d,
+        const float2& _bb_min,
+      const float2 &_bb_max,
 
-             float2 sp = make_float2(2,1))
-    : Reader<VecType, ReaderCalc>(fn,
+             float2 sp,
+             const uint &_iter_cnt)
+    : Reader<VecType>(fn,
                             d,
                             _bb_min,
 							_bb_max,
-                            sp
+                            sp,
+                      _iter_cnt
                             )
   {
   }
@@ -220,7 +224,7 @@ public:
 
 
 template <typename VecType>
-class ReaderVEL : public ReaderPS<VecType, ReaderVEL<VecType>>
+class ReaderVEL : public ReaderPS<VecType>
 {
 public:
 
@@ -229,13 +233,13 @@ public:
            float2 _bb_min,
             float2 _bb_max,
             size_t frame_cnt)
-    : ReaderPS<VecType, ReaderVEL>(fn,
+    : ReaderPS<VecType>(fn,
                             d,
                             _bb_min,
-                            _bb_max
+                            _bb_max,
+                        frame_cnt
                             ),
-      base_fn(fn),
-      frameCnt(frame_cnt)
+      base_fn(fn)
 
   {
     //this->ds = this->dataSetBuilder.Create(this->dim);
@@ -244,10 +248,10 @@ public:
     std::cout << this->filename.str() << std::endl;
 
     mem.resize(100 - loop);
-    for (int i=loop; i<min(frameCnt, 100-loop); i++){
+    for (int i=loop; i<min(this->iter_cnt, 100-loop); i++){
       this->filename.str("");
       this->filename << base_fn << i << ".vel";
-      this->readFile();
+      ReaderPS<VecType>::readFile();
       thrust::swap(this->buf, mem[i]);
       this->buf.resize(0);
     }
@@ -255,11 +259,11 @@ public:
 
   void next(thrust::device_vector<VecType> &in)
   {
-    in = mem[loop++];
+    thrust::swap(in, mem[loop++]);
   }
 
   std::string base_fn;
   thrust::host_vector<thrust::host_vector<VecType>> mem;
-  uint frameCnt, loop;
+  uint loop;
 };
 #endif
