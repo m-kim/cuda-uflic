@@ -29,23 +29,21 @@ void drawline(
 			float2 d = p2 - p;
 
 			float N = max(fabs(d.x), fabs(d.y));
-			if (N < 1e-6) {
-				N = 1;
-			}
+      if (N > 0) {
 
-			const float2 s = make_float2(d.x / N, d.y / N);
+        const float2 s = make_float2(d.x / N, d.y / N);
 
-			for (int i = 0; i<N; i++) {
-				if (!outside(make_float2(round(p.x), roundf(p.y)), make_uint2(blockDim.x * gridDim.x, blockDim.y*gridDim.y))) {
-					size_t idx = static_cast<size_t>(roundf(p.y))*blockDim.x*gridDim.x + static_cast<size_t>(roundf(p.x));
-          //field[idx] += val;//color(255,255,255);
-          //omega[idx]++;
-          atomicAdd(field + idx, val);
-          atomicAdd(omega + idx, 1);
-				}
-				p += s;
-			}
-
+        for (int i = 0; i<N; i++) {
+          if (!outside(make_float2(round(p.x), roundf(p.y)), make_uint2(blockDim.x * gridDim.x, blockDim.y*gridDim.y))) {
+            size_t idx = static_cast<size_t>(roundf(p.y))*blockDim.x*gridDim.x + static_cast<size_t>(roundf(p.x));
+            //field[idx] += val;//color(255,255,255);
+            //omega[idx]++;
+            atomicAdd(field + idx, val);
+            atomicAdd(omega + idx, 1);
+          }
+          p += s;
+        }
+    }
 	}
 }
 
